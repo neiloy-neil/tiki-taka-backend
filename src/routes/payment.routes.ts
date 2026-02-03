@@ -6,4 +6,7 @@ const router: IRouter = Router();
 // Stripe webhook endpoint (raw body required)
 router.post('/webhook', paymentController.handleWebhook);
 
+// Stripe webhook endpoint for checkout sessions
+router.post('/webhook/stripe', paymentController.handleWebhook);
+
 export default router;

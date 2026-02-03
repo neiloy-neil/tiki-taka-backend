@@ -8,6 +8,7 @@ import orderRoutes from './order.routes.js';
 import paymentRoutes from './payment.routes.js';
 import scannerRoutes from './scanner.routes.js';
 import ticketTypeRoutes from './ticketType.routes.js';
+import checkoutRoutes from './checkout.routes.js';
 
 const router: IRouter = Router();
 
@@ -35,5 +36,8 @@ router.use('/scanner', scannerRoutes);
 
 // Ticket type routes
 router.use('/tickets', ticketTypeRoutes);
+
+// Checkout routes
+router.use('/checkout', checkoutRoutes);
 
 export default router;

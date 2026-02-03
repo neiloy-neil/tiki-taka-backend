@@ -5,6 +5,8 @@ import { EventSeatState } from '../models/EventSeatState.model.js';
 import { SeatHold } from '../models/SeatHold.model.js';
 import { Order, IOrder } from '../models/Order.model.js';
 import { Ticket } from '../models/Ticket.model.js';
+import { TicketType, ITicketType } from '../models/TicketType.model.js';
+import { Attendee, IAttendee } from '../models/Attendee.model.js';
 import { AppError } from '../middleware/errorHandler.middleware.js';
 import { generateOrderNumber, generateTicketCode } from '../utils/crypto.js';
 import { resend, emailConfig } from '../config/email.js';
@@ -31,6 +33,15 @@ type CheckoutIntentInput = {
   customerInfo: CustomerInfo;
   sessionId?: string;
   userId?: string;
+};
+
+type CreateCheckoutSessionInput = {
+  eventId: string;
+  ticketTypes: Array<{ ticketTypeId: string; quantity: number }>;
+  customerInfo: CustomerInfo;
+  userId?: string;
+  successUrl: string;
+  cancelUrl: string;
 };
 
 /**
@@ -261,7 +272,14 @@ export const finalizeOrder = async (orderId: string): Promise<IOrder> => {
         from: emailConfig.from,
         to: order.customerInfo.email,
         subject: `Your Tiki-Taka tickets - Order ${order.orderNumber}`,
-        text: `Thanks for your purchase!\n\nOrder: ${order.orderNumber}\nEvent: ${event.title}\nSeats:\n${ticketLines}\n\nShow this email at the venue.`,
+        text: `Thanks for your purchase!
+
+Order: ${order.orderNumber}
+Event: ${event.title}
+Seats:
+${ticketLines}
+
+Show this email at the venue.`,
       });
     } catch (err) {
       console.error('❌ Failed to send ticket email:', err);
@@ -304,14 +322,216 @@ export const listAllOrders = async (): Promise<any[]> => {
 };
 
 /**
+ * Create Stripe Checkout Session for TicketType-based orders
+ */
+export const createCheckoutSession = async (
+  input: CreateCheckoutSessionInput
+): Promise<{ order: IOrder; sessionUrl: string }> => {
+  const { eventId, ticketTypes, customerInfo, userId, successUrl, cancelUrl } = input;
+
+  // Validate ticket availability
+  const ticketTypeIds = ticketTypes.map(t => t.ticketTypeId);
+  const ticketTypeDocs = await TicketType.find({
+    _id: { $in: ticketTypeIds },
+    eventId,
+    isActive: true,
+    availableQuantity: { $gt: 0 }
+  });
+
+  if (ticketTypeDocs.length !== ticketTypes.length) {
+    throw new AppError('Some ticket types are not available', 400);
+  }
+
+  // Check quantity availability
+  for (const request of ticketTypes) {
+    const ticketType = ticketTypeDocs.find(t => t._id.toString() === request.ticketTypeId);
+    if (!ticketType || ticketType.availableQuantity < request.quantity) {
+      throw new AppError(`Not enough tickets available for ${ticketType?.name}`, 400);
+    }
+  }
+
+  // Calculate pricing
+  let subtotal = 0;
+  const lineItems = [];
+  
+  for (const request of ticketTypes) {
+    const ticketType = ticketTypeDocs.find(t => t._id.toString() === request.ticketTypeId);
+    if (ticketType) {
+      const lineTotal = ticketType.price * request.quantity;
+      subtotal += lineTotal;
+      
+      lineItems.push({
+        ticketTypeId: ticketType._id,
+        name: ticketType.name,
+        quantity: request.quantity,
+        price: ticketType.price,
+        total: lineTotal
+      });
+    }
+  }
+
+  const fees = Math.round(subtotal * 0.05 * 100) / 100; // 5% fee
+  const tax = Math.round(subtotal * 0.08 * 100) / 100; // 8% tax
+  const total = Math.round((subtotal + fees + tax) * 100) / 100;
+
+  const orderNumber = generateOrderNumber();
+
+  // Create pending order
+  const order = await Order.create({
+    orderNumber,
+    eventId,
+    userId,
+    guestEmail: userId ? undefined : customerInfo.email,
+    customerInfo,
+    ticketTypeIds: ticketTypes.map(t => t.ticketTypeId),
+    attendeeIds: [],
+    quantity: ticketTypes.reduce((sum, t) => sum + t.quantity, 0),
+    paymentStatus: PAYMENT_STATUS.PENDING,
+    totalAmount: total,
+    currency: 'USD',
+    breakdown: {
+      subtotal,
+      fees,
+      tax,
+      total,
+    },
+    metadata: {
+      lineItems
+    }
+  });
+
+  // Create Stripe Checkout Session
+  if (!stripe) {
+    throw new AppError('Stripe is not configured', 500);
+  }
+
+  const session = await stripe.checkout.sessions.create({
+    payment_method_types: ['card'],
+    line_items: lineItems.map(item => ({
+      price_data: {
+        currency: 'usd',
+        product_data: {
+          name: item.name,
+        },
+        unit_amount: Math.round(item.price * 100),
+      },
+      quantity: item.quantity,
+    })),
+    mode: 'payment',
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+    client_reference_id: orderNumber,
+    metadata: {
+      orderId: order._id.toString(),
+      eventId,
+      customerEmail: customerInfo.email,
+    }
+  });
+
+  return { order, sessionUrl: session.url || '' };
+};
+
+/**
+ * Process successful checkout session
+ */
+export const processSuccessfulCheckout = async (session: any): Promise<IOrder> => {
+  const orderId = session.metadata?.orderId;
+  if (!orderId) {
+    throw new AppError('Order ID not found in session metadata', 400);
+  }
+
+  const order = await Order.findById(orderId);
+  if (!order) {
+    throw new AppError('Order not found', 404);
+  }
+
+  if (order.paymentStatus === PAYMENT_STATUS.SUCCEEDED) {
+    return order;
+  }
+
+  // Update order status
+  order.paymentStatus = PAYMENT_STATUS.SUCCEEDED;
+  order.paymentIntentId = session.payment_intent;
+  await order.save();
+
+  // Generate attendee records
+  const attendees: IAttendee[] = [];
+  
+  for (const ticketTypeId of order.ticketTypeIds) {
+    const ticketType = await TicketType.findById(ticketTypeId);
+    if (!ticketType) continue;
+
+    // Create attendees for this ticket type
+    for (let i = 0; i < ticketTypes.find(t => t.ticketTypeId === ticketTypeId.toString())?.quantity || 0; i++) {
+      const ticketCode = generateTicketCode();
+      
+      // Generate QR code
+      const qrCodeUrl = await QRCode.toDataURL(ticketCode, {
+        errorCorrectionLevel: 'H',
+        width: 300,
+        margin: 2,
+      });
+
+      const attendee = await Attendee.create({
+        ticketCode,
+        qrCodeUrl,
+        eventId: order.eventId,
+        orderId: order._id,
+        ticketTypeId: ticketType._id,
+        userId: order.userId,
+        firstName: order.customerInfo.firstName,
+        lastName: order.customerInfo.lastName,
+        email: order.customerInfo.email,
+        phoneNumber: order.customerInfo.phoneNumber,
+        status: TICKET_STATUS.VALID,
+      });
+
+      attendees.push(attendee);
+    }
+
+    // Reduce ticket inventory
+    await ticketTypeService.updateTicketAvailability(ticketTypeId.toString(), ticketTypes.find(t => t.ticketTypeId === ticketTypeId.toString())?.quantity || 0);
+  }
+
+  // Update order with attendee IDs
+  order.attendeeIds = attendees.map(a => a._id);
+  await order.save();
+
+  // Send confirmation email
+  if (resend && order.customerInfo?.email) {
+    try {
+      const ticketLines = attendees
+        .map((attendee, index) => `Ticket ${index + 1}: ${attendee.ticketCode}`)
+        .join('\n');
+      
+      await resend.emails.send({
+        from: emailConfig.from,
+        to: order.customerInfo.email,
+        subject: `Your Tiki-Taka tickets - Order ${order.orderNumber}`,
+        text: `Thanks for your purchase!
+
+Order: ${order.orderNumber}
+Event: ${await Event.findById(order.eventId)?.then(e => e?.title || 'Event')}
+Tickets:
+${ticketLines}
+
+Show this email at the venue.`,
+      });
+    } catch (err) {
+      console.error('❌ Failed to send ticket email:', err);
+    }
+  }
+
+  return order;
+};
+
+/**
  * Handle Stripe webhook event
  */
 export const handleStripeWebhook = async (eventType: string, payload: any) => {
-  if (eventType === 'payment_intent.succeeded') {
-    const pi = payload as { id: string; metadata?: Record<string, string> };
-    const order = await Order.findOne({ paymentIntentId: pi.id });
-    if (!order) return;
-    await finalizeOrder(order._id.toString());
+  if (eventType === 'checkout.session.completed') {
+    const session = payload as { id: string; metadata?: Record<string, string> };
+    await processSuccessfulCheckout(session);
   }
 
   if (eventType === 'payment_intent.payment_failed') {

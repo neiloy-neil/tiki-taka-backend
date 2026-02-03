@@ -158,6 +158,25 @@ export const createTicketTypeSchema = z.object({
   saleEndDate: z.string().datetime().optional(),
 });
 
+/**
+ * Create Checkout Session Schema
+ */
+export const createCheckoutSessionSchema = z.object({
+  eventId: z.string().min(1, 'Event ID is required'),
+  ticketTypes: z.array(z.object({
+    ticketTypeId: z.string().min(1, 'Ticket type ID is required'),
+    quantity: z.number().min(1, 'Quantity must be at least 1'),
+  })).min(1, 'At least one ticket type is required'),
+  customerInfo: z.object({
+    email: z.string().email('Invalid email address'),
+    firstName: z.string().min(1, 'First name is required'),
+    lastName: z.string().min(1, 'Last name is required'),
+    phoneNumber: z.string().optional(),
+  }),
+  successUrl: z.string().url('Invalid success URL'),
+  cancelUrl: z.string().url('Invalid cancel URL'),
+});
+
 // Type exports
 export type RegisterUserInput = z.infer<typeof registerUserSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
@@ -171,3 +190,4 @@ export type ValidateTicketInput = z.infer<typeof validateTicketSchema>;
 export type ScanHistoryQueryInput = z.infer<typeof scanHistoryQuerySchema>;
 export type CreateStaffInput = z.infer<typeof createStaffSchema>;
 export type CreateTicketTypeInput = z.infer<typeof createTicketTypeSchema>;
+export type CreateCheckoutSessionInput = z.infer<typeof createCheckoutSessionSchema>;
