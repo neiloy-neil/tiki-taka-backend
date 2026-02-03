@@ -292,8 +292,8 @@ export const approveEvent = async (eventId: string, approvedBy: string): Promise
   }
 
   event.status = EVENT_STATUS.PUBLISHED;
-  event.approvedBy = approvedBy;
-  event.approvedAt = new Date();
+  (event as any).approvedBy = approvedBy;
+  (event as any).approvedAt = new Date();
   await event.save();
 
   return event;

@@ -33,6 +33,8 @@ export interface IEvent extends Document {
   isActive: boolean;
   isFeatured: boolean;
   createdBy: Types.ObjectId;
+  approvedBy?: Types.ObjectId;
+  approvedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
