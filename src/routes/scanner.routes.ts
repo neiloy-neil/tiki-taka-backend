@@ -13,6 +13,9 @@ router.post('/validate', authenticate, requireStaff, scannerController.validateT
 // Legacy endpoint kept for backward compatibility
 router.post('/scan', authenticate, requireStaff, scannerController.validateTicket);
 
+// New QR ticket scanning endpoint
+router.post('/scan-ticket', authenticate, requireStaff, scannerController.scanTicket);
+
 // Get scan history for an event
 router.get(
   '/history/:eventId',

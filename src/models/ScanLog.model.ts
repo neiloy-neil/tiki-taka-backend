@@ -13,6 +13,7 @@ interface Location {
 
 export interface IScanLog extends Document {
   ticketId?: Types.ObjectId;
+  attendeeId?: Types.ObjectId;
   ticketCode: string;
   eventId: Types.ObjectId;
   staffId: Types.ObjectId;
@@ -28,6 +29,10 @@ const scanLogSchema = new Schema<IScanLog>(
     ticketId: {
       type: Schema.Types.ObjectId,
       ref: 'Ticket',
+    },
+    attendeeId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Attendee',
     },
     ticketCode: {
       type: String,

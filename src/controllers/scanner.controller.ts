@@ -5,7 +5,7 @@ import { validate, validateQuery } from '../middleware/validation.middleware.js'
 import { validateTicketSchema, scanHistoryQuerySchema } from '../utils/validators.js';
 
 /**
- * Validate a ticket QR code
+ * Validate a ticket QR code (legacy endpoint)
  */
 export const validateTicket = [
   validate(validateTicketSchema),
@@ -32,6 +32,39 @@ export const validateTicket = [
       data: {
         ...result,
         result: result.status, // Legacy field for existing clients
+      },
+    });
+  }),
+];
+
+/**
+ * Scan ticket endpoint (new QR ticket system)
+ */
+export const scanTicket = [
+  validate(validateTicketSchema),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { ticketCode, eventId, deviceInfo, location } = req.body;
+    const staffId = req.user?.userId;
+
+    const result = await scannerService.validateAndMarkAttendeeTicket({
+      ticketCode,
+      eventId,
+      staffId,
+      deviceInfo,
+      location,
+    });
+
+    const statusCode = result.valid
+      ? 200
+      : result.status === 'already_used'
+      ? 409
+      : 400;
+
+    res.status(statusCode).json({
+      success: result.valid,
+      data: {
+        ...result,
+        result: result.status,
       },
     });
   }),
