@@ -9,6 +9,7 @@ import { TicketType, ITicketType } from '../models/TicketType.model.js';
 import { Attendee, IAttendee } from '../models/Attendee.model.js';
 import { AppError } from '../middleware/errorHandler.middleware.js';
 import { generateOrderNumber, generateTicketCode } from '../utils/crypto.js';
+import { emailService } from './email.service.js';
 import { resend, emailConfig } from '../config/email.js';
 import { stripe } from '../config/stripe.js';
 
@@ -497,29 +498,40 @@ export const processSuccessfulCheckout = async (session: any): Promise<IOrder> =
   order.attendeeIds = attendees.map(a => a._id);
   await order.save();
 
-  // Send confirmation email
-  if (resend && order.customerInfo?.email) {
-    try {
-      const ticketLines = attendees
-        .map((attendee, index) => `Ticket ${index + 1}: ${attendee.ticketCode}`)
-        .join('\n');
-      
-      await resend.emails.send({
-        from: emailConfig.from,
-        to: order.customerInfo.email,
-        subject: `Your Tiki-Taka tickets - Order ${order.orderNumber}`,
-        text: `Thanks for your purchase!
-
-Order: ${order.orderNumber}
-Event: ${await Event.findById(order.eventId)?.then(e => e?.title || 'Event')}
-Tickets:
-${ticketLines}
-
-Show this email at the venue.`,
-      });
-    } catch (err) {
-      console.error('❌ Failed to send ticket email:', err);
+  // Send confirmation email with QR codes
+  try {
+    const event = await Event.findById(order.eventId);
+    if (!event) {
+      throw new Error('Event not found');
     }
+
+    // Prepare ticket information for email
+    const ticketInfo = await Promise.all(attendees.map(async (attendee) => {
+      const ticketType = await TicketType.findById(attendee.ticketTypeId);
+      return {
+        ticketCode: attendee.ticketCode,
+        qrCodeUrl: attendee.qrCodeUrl,
+        ticketTypeName: ticketType?.name || 'General Admission',
+        price: ticketType?.price || 0,
+      };
+    }));
+
+    const emailData = {
+      orderId: order._id.toString(),
+      orderNumber: order.orderNumber,
+      customerName: `${order.customerInfo.firstName} ${order.customerInfo.lastName}`,
+      customerEmail: order.customerInfo.email,
+      eventName: event.title,
+      eventDate: event.eventDate,
+      eventLocation: `${event.address.street}, ${event.address.city}, ${event.address.state}`,
+      tickets: ticketInfo,
+      totalAmount: order.totalAmount,
+    };
+
+    await emailService.sendTicketConfirmation(emailData);
+  } catch (err) {
+    console.error('❌ Failed to send ticket confirmation email:', err);
+    // Don't throw error - email failure shouldn't break the order process
   }
 
   return order;

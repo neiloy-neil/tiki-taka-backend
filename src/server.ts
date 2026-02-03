@@ -7,6 +7,7 @@ import { connectRedis } from './config/redis.js';
 import { handleSocketConnection } from './websocket/socketHandler.js';
 import { initializeSocketIO } from './services/realtime.service.js';
 import { startSeatHoldCleanupJob, stopSeatHoldCleanupJob } from './jobs/seatHoldExpiration.job.js';
+import { emailService } from './services/email.service.js';
 
 const PORT = process.env.PORT || 5000;
 
@@ -39,6 +40,9 @@ const startServer = async () => {
 
     // Start background jobs
     await startSeatHoldCleanupJob();
+
+    // Verify email service
+    await emailService.verifyConnection();
 
     // Start HTTP server
     httpServer.listen(PORT, () => {
