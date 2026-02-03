@@ -7,6 +7,7 @@ import seatRoutes from './seat.routes.js';
 import orderRoutes from './order.routes.js';
 import paymentRoutes from './payment.routes.js';
 import scannerRoutes from './scanner.routes.js';
+import ticketTypeRoutes from './ticketType.routes.js';
 
 const router: IRouter = Router();
 
@@ -31,5 +32,8 @@ router.use('/payments', paymentRoutes);
 
 // Scanner routes (staff QR validation)
 router.use('/scanner', scannerRoutes);
+
+// Ticket type routes
+router.use('/tickets', ticketTypeRoutes);
 
 export default router;
