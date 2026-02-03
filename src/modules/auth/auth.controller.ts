@@ -1,45 +1,26 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { User } from '../../models/index.js';
+import { User } from '../../models/User.model.js';
 import { JWTService } from './jwt.service.js';
-import { USER_ROLES } from '../../config/constants.js';
-
-// Validation schemas
-const registerSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(6),
-  firstName: z.string().min(1),
-  lastName: z.string().min(1),
-  phoneNumber: z.string().optional(),
-  role: z.enum([USER_ROLES.USER, USER_ROLES.ORGANIZER, USER_ROLES.GUEST]).default(USER_ROLES.USER),
-});
-
-const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(1),
-});
+import { registerSchema, loginSchema } from '../../utils/validators.js';
 
 export class AuthController {
   static async register(req: Request, res: Response) {
     try {
       // Validate input
       const validatedData = registerSchema.parse(req.body);
-      
+
       // Check if user already exists
       const existingUser = await User.findOne({ email: validatedData.email });
       if (existingUser) {
         return res.status(409).json({
           success: false,
-          message: 'User with this email already exists',
+          message: 'User already exists',
         });
       }
 
-      // Create new user
-      const user = new User({
-        ...validatedData,
-        emailVerified: false,
-      });
-
+      // Create user
+      const user = new User(validatedData);
       await user.save();
 
       // Generate tokens
@@ -66,7 +47,7 @@ export class AuthController {
         return res.status(400).json({
           success: false,
           message: 'Validation error',
-          errors: error.errors,
+          errors: error.issues,
         });
       }
 
@@ -135,7 +116,7 @@ export class AuthController {
         return res.status(400).json({
           success: false,
           message: 'Validation error',
-          errors: error.errors,
+          errors: error.issues,
         });
       }
 

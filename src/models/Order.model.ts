@@ -23,6 +23,7 @@ export interface IOrder extends Document {
   customerInfo: CustomerInfo;
   ticketTypeIds: Types.ObjectId[];
   attendeeIds: Types.ObjectId[];
+  seatIds?: string[];
   quantity: number;
   paymentStatus: typeof PAYMENT_STATUS[keyof typeof PAYMENT_STATUS];
   paymentIntentId?: string;
@@ -74,6 +75,9 @@ const orderSchema = new Schema<IOrder>(
     attendeeIds: [{
       type: Schema.Types.ObjectId,
       ref: 'Attendee',
+    }],
+    seatIds: [{
+      type: String,
     }],
     quantity: {
       type: Number,
