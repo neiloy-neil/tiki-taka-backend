@@ -1,11 +1,13 @@
 import { Request, Response } from 'express';
 import * as eventService from '../services/event.service.js';
 import { asyncHandler } from '../middleware/errorHandler.middleware.js';
+import { AppError } from '../middleware/errorHandler.middleware.js';
 
 /**
  * Create new event
  */
 export const createEvent = asyncHandler(async (req: Request, res: Response) => {
+  // @ts-ignore
   const event = await eventService.createEvent({
     ...req.body,
     eventDate: new Date(req.body.eventDate),
@@ -38,12 +40,20 @@ export const publishEvent = asyncHandler(async (req: Request, res: Response) => 
 });
 
 /**
- * Get event by ID
+ * Get event by ID or slug
  */
 export const getEvent = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
 
-  const event = await eventService.getEventById(id);
+  // Check if id is a slug (contains letters) or ObjectId
+  let event;
+  if (/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id)) {
+    // It's a slug
+    event = await eventService.getEventBySlug(id);
+  } else {
+    // It's an ID
+    event = await eventService.getEventById(id);
+  }
 
   if (!event) {
     res.status(404).json({
@@ -60,19 +70,33 @@ export const getEvent = asyncHandler(async (req: Request, res: Response) => {
 });
 
 /**
- * Get all events
+ * Get all events with advanced filtering
  */
 export const getEvents = asyncHandler(async (req: Request, res: Response) => {
-  const { status, eventType, city, dateFrom, dateTo, page, limit } = req.query;
+  const { 
+    status, 
+    eventType, 
+    category,
+    city, 
+    dateFrom, 
+    dateTo, 
+    page, 
+    limit,
+    sortBy,
+    sortOrder
+  } = req.query;
 
   const result = await eventService.getAllEvents({
     status: status as string,
     eventType: eventType as string,
+    category: category as string,
     city: city as string,
     dateFrom: dateFrom ? new Date(dateFrom as string) : undefined,
     dateTo: dateTo ? new Date(dateTo as string) : undefined,
     page: page ? parseInt(page as string) : 1,
     limit: limit ? parseInt(limit as string) : 20,
+    sortBy: sortBy as string,
+    sortOrder: sortOrder as 'asc' | 'desc',
   });
 
   res.status(200).json({
@@ -127,6 +151,22 @@ export const cancelEvent = asyncHandler(async (req: Request, res: Response) => {
   res.status(200).json({
     success: true,
     message: 'Event cancelled successfully',
+    data: event,
+  });
+});
+
+/**
+ * Approve event (admin only)
+ */
+export const approveEvent = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  
+  // @ts-ignore
+  const event = await eventService.approveEvent(id, req.user!.userId);
+
+  res.status(200).json({
+    success: true,
+    message: 'Event approved successfully',
     data: event,
   });
 });

@@ -130,8 +130,15 @@ const eventSchema = new Schema<IEvent>(
     },
     createdBy: {
       type: Schema.Types.ObjectId,
-      ref: 'Staff',
+      ref: 'User',
       required: true,
+    },
+    approvedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+    },
+    approvedAt: {
+      type: Date,
     },
   },
   {

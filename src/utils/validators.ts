@@ -70,7 +70,16 @@ export const createEventSchema = z.object({
   eventDate: z.string().datetime('Invalid date format'),
   eventEndDate: z.string().datetime().optional(),
   doorOpenTime: z.string().datetime().optional(),
-  eventType: z.enum(['concert', 'sports', 'theater', 'conference', 'other']),
+  eventType: z.enum(['concert', 'sports', 'theater', 'conference', 'festival', 'other']),
+  category: z.string().min(1, 'Event category is required'),
+  tags: z.array(z.string()).optional(),
+  address: z.object({
+    street: z.string().min(1, 'Street is required'),
+    city: z.string().min(1, 'City is required'),
+    state: z.string().min(1, 'State is required'),
+    country: z.string().min(1, 'Country is required'),
+    zipCode: z.string().min(1, 'Zip code is required'),
+  }),
   imageUrl: z.string().url().optional(),
   pricingZones: z.record(z.string(), z.object({
       name: z.string(),

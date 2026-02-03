@@ -29,9 +29,9 @@ export const requireRole = (...allowedRoles: string[]) => {
 };
 
 /**
- * Require customer or guest role
+ * Require user or guest role
  */
-export const requireCustomer = requireRole(USER_ROLES.CUSTOMER, USER_ROLES.GUEST);
+export const requireCustomer = requireRole(USER_ROLES.USER, USER_ROLES.GUEST);
 
 /**
  * Require staff role (staff or admin)
@@ -42,6 +42,11 @@ export const requireStaff = requireRole(STAFF_ROLES.STAFF, STAFF_ROLES.ADMIN);
  * Require admin role only
  */
 export const requireAdmin = requireRole(STAFF_ROLES.ADMIN);
+
+/**
+ * Require organizer or admin role
+ */
+export const requireOrganizer = requireRole(USER_ROLES.ORGANIZER, USER_ROLES.ADMIN);
 
 /**
  * Check if staff is assigned to specific event
